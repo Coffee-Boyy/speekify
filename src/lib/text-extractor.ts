@@ -4,8 +4,12 @@ import type { SentenceChunk } from "./messaging";
 export function extractArticleText(): string | null {
   const docClone = document.cloneNode(true) as Document;
   const article = new Readability(docClone).parse();
-  if (!article?.textContent) return null;
-  return article.textContent.replace(/\s+/g, " ").trim();
+  const readable = article?.textContent?.replace(/\s+/g, " ").trim();
+  if (readable) return readable;
+
+  // Fallback for pages where Readability cannot detect an article.
+  const bodyText = document.body?.innerText?.replace(/\s+/g, " ").trim();
+  return bodyText && bodyText.length > 0 ? bodyText : null;
 }
 
 export function segmentIntoSentences(text: string, lang = "en"): SentenceChunk[] {

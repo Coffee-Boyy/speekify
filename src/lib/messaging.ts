@@ -15,6 +15,7 @@ export type Msg =
   | { type: "tts:pause" }
   | { type: "tts:resume" }
   | { type: "tts:stop" }
+  | { type: "tts:get-status" }
   | { type: "tts:status"; state: "idle" | "loading" | "playing" | "paused"; progress?: number; message?: string }
   | { type: "tts:sentence-start"; index: number; tabId?: number }
   | { type: "tts:sentence-end"; index: number; tabId?: number }

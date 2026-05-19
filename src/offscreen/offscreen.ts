@@ -14,6 +14,7 @@ let state: "idle" | "loading" | "playing" | "paused" = "idle";
 function postStatus(s: typeof state, extra: { progress?: number; message?: string } = {}): void {
   const msg: Msg = { type: "tts:status", state: s, ...extra };
   chrome.runtime.sendMessage(msg).catch(() => {});
+  console.info("[Speekify:Offscreen] Status", msg);
   state = s;
 }
 
@@ -23,6 +24,7 @@ function ensureAudio(): AudioContext {
 }
 
 async function playChunk(audio: Float32Array, sampleRate: number): Promise<void> {
+  console.debug("[Speekify:Offscreen] Playing chunk", { samples: audio.length, sampleRate });
   const ctx = ensureAudio();
   if (ctx.state === "suspended") await ctx.resume();
   const buffer = ctx.createBuffer(1, audio.length, sampleRate);
@@ -38,6 +40,12 @@ async function playChunk(audio: Float32Array, sampleRate: number): Promise<void>
 }
 
 async function runQueue(): Promise<void> {
+  console.info("[Speekify:Offscreen] Starting queue", {
+    totalSentences: queue.length,
+    tabId: activeTabId,
+    voice: activeVoice,
+    speed: activeSpeed,
+  });
   const settings = await getSettings();
   const tts = await loadEngine(settings.dtype, (info) => {
     postStatus("loading", { progress: info.progress, message: info.message });
@@ -57,6 +65,11 @@ async function runQueue(): Promise<void> {
       continue;
     }
     const chunk = queue[queueIndex];
+    console.debug("[Speekify:Offscreen] Sentence start", {
+      queueIndex,
+      sentenceIndex: chunk.index,
+      preview: chunk.text.slice(0, 80),
+    });
     chrome.runtime
       .sendMessage({ type: "tts:sentence-start", index: chunk.index, tabId: activeTabId } satisfies Msg)
       .catch(() => {});
@@ -69,12 +82,18 @@ async function runQueue(): Promise<void> {
     chrome.runtime
       .sendMessage({ type: "tts:sentence-end", index: chunk.index, tabId: activeTabId } satisfies Msg)
       .catch(() => {});
+    console.debug("[Speekify:Offscreen] Sentence end", {
+      queueIndex,
+      sentenceIndex: chunk.index,
+    });
     queueIndex += 1;
   }
+  console.info("[Speekify:Offscreen] Queue finished");
   if (state !== "idle") postStatus("idle");
 }
 
 function stopAll(): void {
+  console.info("[Speekify:Offscreen] Stopping playback");
   if (currentSource) {
     try {
       currentSource.stop();
@@ -87,6 +106,7 @@ function stopAll(): void {
 }
 
 chrome.runtime.onMessage.addListener((msg: Msg) => {
+  console.debug("[Speekify:Offscreen] Received message", msg.type);
   switch (msg.type) {
     case "tts:read":
       stopAll();

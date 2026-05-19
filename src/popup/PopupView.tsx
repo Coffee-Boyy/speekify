@@ -4,7 +4,9 @@ import { VOICES, type Settings, type Msg, type Voice } from "../lib/messaging";
 
 export function Popup() {
   const [settings, setLocal] = useState<Settings | null>(null);
-  const [status, setStatus] = useState<{ state: string; message?: string }>({ state: "idle" });
+  const [status, setStatus] = useState<{ state: string; message?: string; progress?: number }>({
+    state: "idle",
+  });
 
   useEffect(() => {
     void getSettings().then(setLocal);
@@ -12,8 +14,19 @@ export function Popup() {
   }, []);
 
   useEffect(() => {
+    void chrome.runtime
+      .sendMessage({ type: "tts:get-status" } satisfies Msg)
+      .then((resp: Msg | undefined) => {
+        if (resp?.type === "tts:status") {
+          setStatus({ state: resp.state, message: resp.message, progress: resp.progress });
+        }
+      })
+      .catch(() => {});
+
     const listener = (msg: Msg) => {
-      if (msg.type === "tts:status") setStatus({ state: msg.state, message: msg.message });
+      if (msg.type === "tts:status") {
+        setStatus({ state: msg.state, message: msg.message, progress: msg.progress });
+      }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
@@ -24,7 +37,16 @@ export function Popup() {
   const send = (msg: Msg) => chrome.runtime.sendMessage(msg);
   const readArticle = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) await chrome.tabs.sendMessage(tab.id, { type: "content:get-article" } satisfies Msg);
+    if (!tab?.id) return;
+    setStatus({ state: "loading", message: "Requesting page text…" });
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: "content:get-article" } satisfies Msg);
+    } catch (_error) {
+      setStatus({
+        state: "idle",
+        message: "Cannot read this page. Try a normal http(s) tab.",
+      });
+    }
   };
 
   return (
@@ -32,6 +54,7 @@ export function Popup() {
       <h1 style={{ fontSize: 16, margin: 0 }}>Speekify</h1>
       <div style={{ fontSize: 12, opacity: 0.7 }}>
         {status.state}
+        {typeof status.progress === "number" ? ` ${(status.progress * 100).toFixed(0)}%` : ""}
         {status.message ? ` · ${status.message}` : ""}
       </div>
 
